@@ -1,6 +1,8 @@
+"use client"
 import Link from 'next/link';
 import { buttonVariants } from './ui/button';
 import { HandMetal } from 'lucide-react';
+import { useEffect } from 'react';
 
 const Navbar = () => {
   return (
