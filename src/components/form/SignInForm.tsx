@@ -10,15 +10,12 @@ import {
   FormMessage,
 } from '../ui/form';
 import React, { useEffect, useState } from 'react';
-import StyledFirebaseAuth from 'react-firebaseui/StyledFirebaseAuth';
-import { auth } from "../../../firebase/clientApp";
 import { GithubAuthProvider } from 'firebase/auth';
 import * as z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import Link from 'next/link';
-import { doc, setDoc } from "firebase/firestore";
 import { firestore } from "../../../firebase/clientApp";
 import { collection, getDocs } from "firebase/firestore";
 import { redirect } from 'next/navigation';

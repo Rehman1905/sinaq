@@ -1,6 +1,6 @@
 "use client";
 import "../../globals.css"
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { v4 as uuidv4 } from 'uuid';
 import { doc, setDoc } from "firebase/firestore";
 import { firestore } from "../../../../firebase/clientApp";
@@ -14,8 +14,7 @@ interface Question {
 const Admin = () => {
     const [text, setText] = useState<string>("");
     const [json, setJson] = useState<Question[]>([]);
-    console.log(json);
-
+    const nameExam = useRef<HTMLInputElement | null>(null);
     const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setText(e.target.value);
     };
@@ -24,77 +23,121 @@ const Admin = () => {
         const lines = text.split("\n");
         const questions: Question[] = [];
         let currentQuestion: Question | null = null;
-
+        const answersTracker: Set<string> = new Set();  // To track already added answers for a question
+    
+        let isAnswerBeingProcessed = false;  // Flag to track if an answer is already being processed
+    
         lines.forEach((line, index) => {
             const trimmedLine = line.trim();
-
-            // Detect a new question (e.g., "29.")
+    
+            // Detect new question based on a number followed by a period (e.g., "17.")
             if (/^\d+\./.test(trimmedLine)) {
                 const currentNumber = parseInt(trimmedLine.split(".")[0]);
-                const previousNumber = currentQuestion && parseInt(currentQuestion.question.split(".")[0]);
-
+                const previousNumber = currentQuestion ? parseInt(currentQuestion.question.split(".")[0]) : null;
+    
+                // If it's a new question, finalize the current one and start a new question
                 if (!previousNumber || currentNumber === previousNumber + 1) {
                     if (currentQuestion) {
                         questions.push(currentQuestion);
                     }
                     currentQuestion = {
-                        question: trimmedLine,
+                        question: trimmedLine,  // Store the current question
                         answers: [],
                         correctAnswer: null,
                     };
+                    answersTracker.clear(); // Reset the tracker for the new question
                 } else {
+                    // If it seems like a continuation of the previous question, append to it
                     if (currentQuestion) {
                         currentQuestion.question += " " + trimmedLine;
                     }
                 }
-            } else if (/^(√|•|\d+,)/.test(trimmedLine)) {
-                // Handle answers (either correct or regular)
+            }
+            // Detect answers based on special symbols (e.g., "√", "•", or numbers)
+            else if (/^(√|•|\d+,)/.test(trimmedLine)) {
                 if (currentQuestion) {
                     const isCorrect = trimmedLine.startsWith("√");
                     let cleanLine = trimmedLine.replace(/^(√|•|\d+,)/, "").trim();
-
+    
+                    // If the answer is already being processed, we don't need to reprocess it
+                    if (answersTracker.has(cleanLine)) {
+                        return;  // Skip if it's already in the tracker
+                    }
+    
+                    // Handle multiline answers by checking for the next question or answer
                     let nextIndex = index + 1;
-                    // Continue collecting lines until another answer or question is encountered
-                    while (nextIndex < lines.length && !/^(√|•|\d+\.)/.test(lines[nextIndex])) {
+                    while (nextIndex < lines.length && !/^\d+\./.test(lines[nextIndex]) && !/^(√|•|\d+,)/.test(lines[nextIndex])) {
                         cleanLine += " " + lines[nextIndex].trim();
                         nextIndex++;
                     }
-
+    
+                    // Add the correct answer if needed
                     if (isCorrect) {
                         currentQuestion.correctAnswer = cleanLine;
                     }
+    
+                    // Add the answer to the question if it's unique
                     currentQuestion.answers.push(cleanLine);
+                    answersTracker.add(cleanLine);  // Mark this answer as added
+    
+                    // Once added, stop further processing on this answer by setting flag to false
+                    isAnswerBeingProcessed = true;
+    
+                    return;  // Skip the remaining code for this line, since the answer is now handled
                 }
-            } else {
-                // Handle additional lines for the current question
-                if (currentQuestion) {
-                    currentQuestion.question += " " + trimmedLine;
+            }
+            // If it's part of an ongoing answer, continue adding it to the current answer
+            else {
+                if (currentQuestion && !isAnswerBeingProcessed) {
+                    let lastAnswer = currentQuestion.answers[currentQuestion.answers.length - 1];
+    
+                    if (lastAnswer && lastAnswer !== trimmedLine) {
+                        lastAnswer += " " + trimmedLine;
+                        currentQuestion.answers[currentQuestion.answers.length - 1] = lastAnswer;
+                    } else if (!lastAnswer || lastAnswer !== trimmedLine) {
+                        // If it's a new answer, add it and mark it as processed
+                        currentQuestion.answers.push(trimmedLine);
+                        answersTracker.add(trimmedLine);  // Mark this part as added
+    
+                        // Set the flag to prevent adding the same answer again
+                        isAnswerBeingProcessed = true;
+    
+                        return;  // Skip further processing for this part
+                    }
                 }
             }
         });
-
+    
+        // Finalize the last question if it exists
         if (currentQuestion) {
             questions.push(currentQuestion);
         }
-
+    
+        // Set the JSON with the extracted questions and answers
         setJson(questions);
     };
+    
 
     const firebase = () => {
         const id = uuidv4();
         const saveData = async () => {
-            try {
-                await setDoc(doc(firestore, "exam", id), { json });
-                alert("Success");
-            } catch (e) {
-                console.error("Error writing document: ", e);
-            }
-        };
+            if (nameExam.current && nameExam.current.value) {
+                try {
+                    await setDoc(doc(firestore, "exam", id), {
+                        json,
+                        examName: nameExam.current.value
+                    });
+                    alert("Success");
+                } catch (e) {
+                    console.error("Error writing document: ", e);
+                }
+            };
+        }
         saveData();
     };
 
     return (
-        <div style={{ height: "100vh" }} className="mt-10 pt-10 bg-red">
+        <div style={{ height: "100vh" }} className="mt-10 pt-10 bg-red container flex flex-col gap-1">
             <textarea
                 className="text-black"
                 value={text}
@@ -103,6 +146,7 @@ const Admin = () => {
                 cols={50}
                 placeholder="PDF mətnini bura yapışdırın"
             />
+            <input type="text" placeholder="movzunun adi" className="p-1 text-black" ref={nameExam} />
             <button
                 onClick={extractQuestions}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -122,7 +166,7 @@ const Admin = () => {
                     <ul>
                         {item.answers.map((answer, idx) => (
                             <li key={idx}>
-                                <label>
+                                <label className="text-white">
                                     <input
                                         type="radio"
                                         name={`question-${index}`}
@@ -149,3 +193,4 @@ const Admin = () => {
 };
 
 export default Admin;
+

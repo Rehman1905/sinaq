@@ -1,5 +1,5 @@
 "use client"
-import SignInForm from '@/components/form/SignInForm';
+import SignInForm from '../../../components/form/SignInForm';
 
 const page = () => {
   return (

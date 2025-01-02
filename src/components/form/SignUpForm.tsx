@@ -15,7 +15,6 @@ import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
-import StyledFirebaseAuth from "react-firebaseui/StyledFirebaseAuth";
 import { auth, GoogleAuthProvider } from '../../../firebase/clientApp';
 import { doc, setDoc } from "firebase/firestore";
 import { firestore } from "../../../firebase/clientApp";

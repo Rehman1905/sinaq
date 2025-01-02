@@ -1,11 +1,11 @@
 "use client";
 import '../../globals.css';
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { firestore } from "../../../../firebase/clientApp";
 import trueImg from "../../../image/true.png";
 import Image from 'next/image';
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { useParams, useRouter } from 'next/navigation';
 
 interface Question {
   question: string;
@@ -27,31 +27,44 @@ const QuestionExtractor = () => {
   const endNumber = useRef<HTMLInputElement | null>(null);
   const [examResult, setExamResult] = useState<number>(0);
   const [userAnswers, setUserAnswers] = useState<{ [key: number]: string }>({});
+  const router = useRouter(); 
 
+  const params = useParams();
+  const testValue = params.test as string;
   const fetchCollectionData = async () => {
-    const querySnapshot = await getDocs(collection(firestore, "exam"));
-    const fetchedJson: Question[] = [];
-    querySnapshot.forEach((doc) => {
-      fetchedJson.push(...doc.data().json);
-    });
-    setJson(fetchedJson);
+    try {
+      const collectionRef = collection(firestore, "exam");
+      const q = query(collectionRef, where("examName", "==", testValue));
+      const querySnapshot = await getDocs(q);
+      const fetchedJson: Question[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedJson.push(...doc.data().json);
+      });
+      setJson(fetchedJson);
+    } catch (error) {
+      console.error("Error fetching exam data:", error);
+    }
   };
+
 
   useEffect(() => {
     const fetchCollectionUser = async () => {
       const querySnapshot = await getDocs(collection(firestore, "users"));
-      const fetchedUsers: { saveQuestions: string[], email: string }[] = [];
+      const fetchedUsers: { saveQuestions: any[], email: string }[] = [];
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        if (data?.saveQuestions && data.values.email === email) {
+        if (data && data.values.email === email) {
+          console.log(data);
+          const saveQuestions = data[testValue] || []; 
           fetchedUsers.push({
-            saveQuestions: data.saveQuestions,
+            saveQuestions,
             email: data.values.email
           });
         }
       });
 
+      console.log(fetchedUsers, 'salam');
       if (fetchedUsers.length > 0) {
         setSaveQuestionsNumber(fetchedUsers[0].saveQuestions);
       }
@@ -80,26 +93,34 @@ const QuestionExtractor = () => {
   const startExam = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setFinish(false);
-    setCorrect("")
+    setCorrect("");
+  
     if (!question) {
       const start = startNumber.current?.value ? parseInt(startNumber.current.value) : 0;
       const end = endNumber.current?.value ? parseInt(endNumber.current.value) : 0;
-
+  
       if (start && end) {
+        const questionRange = end - start + 1;
+  
         const rangeQuestions = json.slice(start - 1, end);
-        const randomQuestions = shuffleArray(rangeQuestions).slice(0, end - start + 1);
-        const shuffledQuestionsWithAnswers = randomQuestions.map((item) => ({
+        const shuffledQuestions = shuffleArray(rangeQuestions); // Sualları qarışdırırıq
+  
+        // Maksimum 50 random sual seçilir
+        const selectedQuestions = shuffledQuestions.slice(0, Math.min(50, questionRange));
+        const shuffledQuestionsWithAnswers = selectedQuestions.map((item) => ({
           ...item,
-          answers: shuffleArray(item.answers)
+          answers: shuffleArray(item.answers),
         }));
+  
         setFilteredQuestions(shuffledQuestionsWithAnswers);
         setNumber(true);
       }
     } else {
       if (saveQuestionsNumber.length) {
-        const filteredSavedQuestions = json.filter((item) =>
-          saveQuestionsNumber.includes(item.question.split('.')[0])
-        );
+        const filteredSavedQuestions = shuffleArray(
+          json.filter((item) => saveQuestionsNumber.includes(item.question.split(".")[0]))
+        ).slice(0, 50); // Yaddaşdakı suallardan maksimum 50 random sual seçilir
+  
         setFilteredQuestions(filteredSavedQuestions);
         setNumber(true);
         setQuestion(false);
@@ -108,6 +129,7 @@ const QuestionExtractor = () => {
       }
     }
   }, [json, question, saveQuestionsNumber]);
+  
 
   const shuffleArray = (array: any[]) => {
     for (let i = array.length - 1; i > 0; i--) {
@@ -136,14 +158,14 @@ const QuestionExtractor = () => {
 
   const endOfExam = async () => {
     if (!finish) {
-      if (confirm("İmtahanı bitirəsiniz?")) {
+      if (confirm("İmtahanı bitir")) {
         try {
           await updateDoc(doc(firestore, "users", email), {
-            saveQuestions: saveQuestionsNumber,
+            [testValue]: saveQuestionsNumber,
           });
           console.log("Sənəd uğurla yazıldı!");
         } catch (e) {
-          console.error("Sənəd yazılarkən xəta baş verdi: ", e);
+          console.error("Sənəd yazılarkən xəta baş verdi", e);
         }
         setFinish(true);
         let count = 0;
@@ -154,7 +176,7 @@ const QuestionExtractor = () => {
           }
         });
         setExamResult(count);
-        alert(`You answered ${count} out of ${filteredQuestions.length} questions correctly.`);
+        alert(`${count} düz ${filteredQuestions.length} sualdan `);
       }
     } else {
       setNumber(false);
@@ -169,6 +191,10 @@ const QuestionExtractor = () => {
     }));
   };
 
+  const back = (e: React.FormEvent) => {
+    e.preventDefault(); 
+    router.push('/'); 
+  };
   return (
     <div className="pt-10 h-screen">
       {number ? (
@@ -226,7 +252,7 @@ const QuestionExtractor = () => {
           <form className="bg-white p-6 rounded-lg shadow-md w-full max-w-lg space-y-6">
             {!question ? (
               <div>
-                <label className="block text-lg font-semibold mb-2 text-black">Max 50 sual seçilə bilər</label>
+                <label className="block text-lg font-semibold mb-2 text-black">Max 50 sual düşəcək</label>
                 <div className="flex space-x-4">
                   <input ref={startNumber}
                     type="number"
@@ -251,7 +277,11 @@ const QuestionExtractor = () => {
               <button onClick={startExam} className="w-full bg-green-500 text-white p-3 rounded-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition">
                 İmtahana Başla
               </button>
+
             </div>
+            <button onClick={back} className="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+              Geri qayit
+            </button>
           </form>
         </div>
       )}
